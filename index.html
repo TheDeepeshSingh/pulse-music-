@@ -33,7 +33,7 @@ nav{display:flex;justify-content:space-around;font-size:13px}nav button{backgrou
 const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const S=Object.assign({q:[],i:-1,sh:0,rp:0,ap:1,cf:0,vid:0,pl:{},st:{},key:''},(()=>{try{return JSON.parse(localStorage.ms)}catch{return{}}})());
 const save=()=>{try{localStorage.ms=JSON.stringify(S)}catch{}};
-let P,ready=0,pend=null,view=[],tab='search',lrc=[],sync=0,open=null,slT,sleepEnd=0,la=-1,seeking=0;
+let P,ready=0,pend=null,view=[],tab='search',lrc=[],sync=0,plOpen=null,slT,sleepEnd=0,la=-1,seeking=0;
 const TABS={search:'Search',queue:'Queue',lyrics:'Lyrics',lib:'Library',replay:'Replay',set:'Settings'};
 const IN=['https://pipedapi.kavin.rocks','https://api.piped.private.coffee','https://pipedapi.adminforge.de'];
 const mk=(id,t,c)=>({id,t,c:(c||'').replace(/ - Topic|VEVO/g,'').trim(),im:`https://i.ytimg.com/vi/${id}/hqdefault.jpg`});
@@ -85,16 +85,16 @@ async function shareLy(){const i=Math.max(la,0),t=S.q[S.i];if(!t)return;const x=
 /* ---------- Views ---------- */
 const row=(t,i)=>`<div class="r ${S.q[S.i]&&S.q[S.i].id===t.id?'on':''}"><img src="${t.im}" loading="lazy" data-a="p" data-i="${i}" alt=""><div class="m" data-a="p" data-i="${i}"><b>${esc(t.t)}</b><span>${esc(t.c)}</span></div><button data-a="q" data-i="${i}" aria-label="Add to queue">＋</button><button data-a="l" data-i="${i}" aria-label="Add to playlist">♡</button></div>`;
 function list(a,h){$('#main').innerHTML=(h?`<h3>${h}</h3>`:'')+(a.length?a.map(row).join(''):'<p style="color:var(--mu)">Nothing here yet.</p>')}
-function top(){return Object.values(S.st).sort((a,b)=>b.n-a.n)}
+function topTracks(){return Object.values(S.st).sort((a,b)=>b.n-a.n)}
 function render(){const m=$('#main');nav();
  if(tab==='search'){if(view.length)return list(view,'Results');
   m.innerHTML=`<h3>Discover</h3><div class="row"><button data-a="radio">📻 Live radio</button><button data-a="disc">✨ Discovery station</button><button data-a="mix">🎧 Personal mix</button></div>
   <div class="row"><button data-a="tr">Trending hits</button><button data-a="mv">Hindi top songs</button></div>`}
  else if(tab==='queue'){view=S.q;list(S.q,'Up next')}
  else if(tab==='lyrics'){m.innerHTML=`<div class="row"><button data-a="sl">Share lyric</button><button data-a="vid">${S.vid?'Hide':'Show'} music video</button></div><div class="ly">${lrc.length?lrc.map((l,i)=>`<p data-s="${l.s}">${esc(l.x)||'♪'}</p>`).join(''):'<p>No lyrics found.</p>'}</div>`}
- else if(tab==='lib'){const n=Object.keys(S.pl);if(open&&S.pl[open]){view=S.pl[open];m.innerHTML=`<div class="row"><button data-a="back">←</button><button class="ac" data-a="pp">Play</button><button data-a="shr">Share (collab link)</button><button data-a="del">Delete</button></div><h3>${esc(open)}</h3><div id="pls"></div>`;$('#pls').innerHTML=view.map(row).join('')}
+ else if(tab==='lib'){const n=Object.keys(S.pl);if(plOpen&&S.pl[plOpen]){view=S.pl[plOpen];m.innerHTML=`<div class="row"><button data-a="back">←</button><button class="ac" data-a="pp">Play</button><button data-a="shr">Share (collab link)</button><button data-a="del">Delete</button></div><h3>${esc(plOpen)}</h3><div id="pls"></div>`;$('#pls').innerHTML=view.map(row).join('')}
   else m.innerHTML=`<h3>Playlists</h3>`+(n.length?n.map(k=>`<div class="r"><div class="m" data-a="op" data-k="${esc(k)}"><b>${esc(k)}</b><span>${S.pl[k].length} songs</span></div></div>`).join(''):'<p style="color:var(--mu)">Tap ♡ on a song to create one.</p>')}
- else if(tab==='replay'){const t=top().slice(0,25);view=t;m.innerHTML='<h3>Your Replay</h3>'+(t.length?t.map((x,i)=>row(x,i).replace('</div></div>',`</div><small>${x.n}×</small></div>`)).join(''):'<p style="color:var(--mu)">Play some songs first.</p>')}
+ else if(tab==='replay'){const t=topTracks().slice(0,25);view=t;m.innerHTML='<h3>Your Replay</h3>'+(t.length?t.map((x,i)=>row(x,i).replace('</div></div>',`</div><small>${x.n}×</small></div>`)).join(''):'<p style="color:var(--mu)">Play some songs first.</p>')}
  else m.innerHTML=`<h3>Settings</h3><p style="color:var(--mu)">YouTube Data API key (optional, better search)</p><div class="row"><input id="key" value="${esc(S.key)}" placeholder="AIza…"><button data-a="sk">Save</button></div>
   <div class="row">Crossfade <select id="cf">${[0,3,6,10].map(v=>`<option value="${v}" ${S.cf===v?'selected':''}>${v?v+'s':'Off'}</option>`).join('')}</select></div>
   <div class="row">Sleep timer <select id="sl"><option value="0">Off</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option><option value="-1">End of track</option></select></div>
@@ -102,26 +102,26 @@ function render(){const m=$('#main');nav();
 function nav(){$('#nav').innerHTML=Object.entries(TABS).map(([k,v])=>`<button data-t="${k}" class="${tab===k?'on':''}">${v}</button>`).join('')}
 /* ---------- Events ---------- */
 document.addEventListener('click',async e=>{const b=e.target.closest('[data-a],[data-t],[data-s]');if(!b)return;const d=b.dataset,a=d.a,t=view[d.i];
- if(d.t){tab=d.t;if(tab==='search')view=[];open=null;return render()}
+ if(d.t){tab=d.t;if(tab==='search')view=[];plOpen=null;return render()}
  if(d.s&&ready){P.seekTo(+d.s,true);return}
  if(a==='p'){if(tab==='queue')play(+d.i);else{S.q=[...view];play(+d.i)}}
  if(a==='q'){S.q.push(t);save();b.textContent='✓'}
- if(a==='l'){const n=prompt('Playlist name',open||Object.keys(S.pl)[0]||'My Playlist');if(n){(S.pl[n]=S.pl[n]||[]).push(t);save()}}
+ if(a==='l'){const n=prompt('Playlist name',plOpen||Object.keys(S.pl)[0]||'My Playlist');if(n){(S.pl[n]=S.pl[n]||[]).push(t);save()}}
  if(a==='radio')doSearch('lofi radio live 24/7',1);if(a==='tr')doSearch('top music hits this week');if(a==='mv')doSearch('top hindi songs');
- if(a==='disc'||a==='mix'){const c=[...new Set(top().map(x=>x.c))].slice(0,3);if(!c.length)return alert('Play a few songs first so I can learn your taste.');
+ if(a==='disc'||a==='mix'){const c=[...new Set(topTracks().map(x=>x.c))].slice(0,3);if(!c.length)return alert('Play a few songs first so I can learn your taste.');
   if(a==='disc')doSearch('songs similar to '+c[0]);else{const r=(await Promise.all(c.map(x=>search(x+' best songs').catch(()=>[])))).flat().sort(()=>Math.random()-.5);view=r;list(r,'Your mix')}}
  if(a==='sl')shareLy();if(a==='vid'){S.vid^=1;$('#vw').classList.toggle('show',!!S.vid);save();render()}
  if(a==='sk'){S.key=$('#key').value.trim();save()}
- if(a==='op'){open=d.k;render()}if(a==='back'){open=null;render()}
- if(a==='pp'){S.q=[...S.pl[open]];play(0)}if(a==='del'&&confirm('Delete?')){delete S.pl[open];open=null;save();render()}
- if(a==='shr'){const p=btoa(unescape(encodeURIComponent(JSON.stringify({n:open,l:S.pl[open].map(x=>[x.id,x.t,x.c])})))),u=location.origin+location.pathname+'?pl='+p;
-  try{navigator.share?await navigator.share({title:open,url:u}):await navigator.clipboard.writeText(u)}catch{}}});
+ if(a==='op'){plOpen=d.k;render()}if(a==='back'){plOpen=null;render()}
+ if(a==='pp'){S.q=[...S.pl[plOpen]];play(0)}if(a==='del'&&confirm('Delete?')){delete S.pl[plOpen];plOpen=null;save();render()}
+ if(a==='shr'){const p=btoa(unescape(encodeURIComponent(JSON.stringify({n:plOpen,l:S.pl[plOpen].map(x=>[x.id,x.t,x.c])})))),u=location.origin+location.pathname+'?pl='+p;
+  try{navigator.share?await navigator.share({title:plOpen,url:u}):await navigator.clipboard.writeText(u)}catch{}}});
 document.addEventListener('change',e=>{if(e.target.id==='cf'){S.cf=+e.target.value;save()}if(e.target.id==='ap'){S.ap=+e.target.checked;save()}
  if(e.target.id==='sl'){const v=+e.target.value;clearTimeout(slT);sleepEnd=v===-1;if(v>0)slT=setTimeout(()=>P.pauseVideo(),v*6e4)}});
 $('#go').onclick=()=>{const v=$('#q').value.trim();v&&doSearch(v)};$('#q').onkeydown=e=>{if(e.key==='Enter')$('#go').click()};
 /* import shared playlist from link */
 try{const p=new URLSearchParams(location.search).get('pl');if(p){const j=JSON.parse(decodeURIComponent(escape(atob(p))));
- const ex=S.pl[j.n]||[];j.l.forEach(([id,t,c])=>{if(!ex.some(x=>x.id===id))ex.push(mk(id,t,c))});S.pl[j.n]=ex;save();tab='lib';open=j.n;history.replaceState(0,'',location.pathname)}}catch{}
+ const ex=S.pl[j.n]||[];j.l.forEach(([id,t,c])=>{if(!ex.some(x=>x.id===id))ex.push(mk(id,t,c))});S.pl[j.n]=ex;save();tab='lib';plOpen=j.n;history.replaceState(0,'',location.pathname)}}catch{}
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 $('#mic').onclick=()=>{const R=window.SpeechRecognition||window.webkitSpeechRecognition;if(!R)return alert('Voice not supported in this browser');const r=new R();r.lang='en-IN';
  r.onresult=async e=>{const s=e.results[0][0].transcript.toLowerCase();
