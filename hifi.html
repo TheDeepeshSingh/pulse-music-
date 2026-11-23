@@ -16,7 +16,7 @@ main{padding:0 12px 190px}#ln{font-size:26px;font-weight:800;min-height:70px;mar
 #bar{position:fixed;bottom:0;left:0;right:0;background:var(--sf);padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-radius:18px 18px 0 0}
 #sk{width:100%;accent-color:var(--ac)}.ct{display:flex;justify-content:space-around}.ct button{background:none;font-size:22px}
 </style></head><body>
-<header><button class="ac" id="add">＋ Add music</button><input id="jk" placeholder="Jamendo client_id"><input id="jq" placeholder="Search free music"><button id="jg">Go</button><button id="mic" aria-label="Voice">🎤</button><a href="index.html" style="background:var(--sf);color:var(--tx);border-radius:10px;padding:10px;text-decoration:none">YouTube</a></header>
+<header><button class="ac" id="add">＋ Add music</button><input id="jk" placeholder="Jamendo key (optional)"><input id="jq" placeholder="Search Audius (free)"><button id="jg">Go</button><button id="mic" aria-label="Voice">🎤</button><a href="index.html" style="background:var(--sf);color:var(--tx);border-radius:10px;padding:10px;text-decoration:none">YouTube</a></header>
 <input type="file" id="fi" accept="audio/*" multiple hidden>
 <main><div id="ln">Add songs to begin</div>
 <details open><summary>Sound</summary>
@@ -60,7 +60,7 @@ async function blobOf(t){return (await (await LIB()).match('/lib/'+t.id)).blob()
 async function gainOf(b){try{const x=(await AC.decodeAudioData(await b.arrayBuffer())).getChannelData(0);let s=0,n=0;for(let i=0;i<x.length;i+=50){s+=x[i]*x[i];n++}return Math.min(3,Math.max(.2,.1/Math.sqrt(s/n)))}catch{return 1}}
 function load(d,t){if(d.t===t)return d.p;d.t=t;return d.p=(async()=>{let u=t.u;d.sc=1;
  if(t.off){const b=await blobOf(t);u=URL.createObjectURL(b);if($('#sc').checked){t.g=t.g||await gainOf(b);d.sc=t.g}}
- d.a.src=u})()}
+ d.a.crossOrigin=t.off?null:'anonymous';d.a.src=u})()}
 /* ---------- Playback: gapless + crossfade with two decks ---------- */
 async function go(i,f){init();AC.resume();const t=Q[i];if(!t||going)return;going=1;const o=decks[cur],d=decks[1-cur];idx=i;
  await load(d,t);const T=AC.currentTime,fd=f||.05;d.a.currentTime=0;d.a.play().catch(()=>{});
@@ -82,7 +82,7 @@ async function ui(t){$('#tt').textContent=t.t;lrc=[];la=-1;$('#ln').textContent=
   m.setActionHandler('play',()=>decks[cur].a.play());m.setActionHandler('pause',()=>decks[cur].a.pause());m.setActionHandler('nexttrack',$('#bn').onclick);m.setActionHandler('previoustrack',$('#bp').onclick)}
  try{const a=await (await fetch('https://lrclib.net/api/search?q='+encodeURIComponent(t.t))).json(),r=a.find(x=>x.syncedLyrics);
   if(r)lrc=r.syncedLyrics.split('\n').map(l=>{const m=l.match(/\[(\d+):(\d+\.?\d*)\](.*)/);return m&&{s:+m[1]*60+ +m[2],x:m[3].trim()}}).filter(Boolean)}catch{}}
-function draw(){Q=[...meta,...res];$('#list').innerHTML=Q.map((t,i)=>`<div class="r ${i===idx?'on':''}"><div class="m" data-p="${i}"><b>${esc(t.t)}</b><span>${t.k||''} ${t.off?'· offline':''}</span></div>${t.off?`<button data-x="${i}">🗑</button>`:`<button data-d="${i}">⬇</button>`}</div>`).join('')||'<p style="color:var(--mu);margin-top:12px">No songs yet.</p>'}
+function draw(){Q=[...meta,...res];$('#list').innerHTML=Q.map((t,i)=>`<div class="r ${i===idx?'on':''}"><div class="m" data-p="${i}"><b>${esc(t.t)}</b><span>${t.k||''} ${t.off?'· offline':''}</span></div>${t.off?`<button data-x="${i}">🗑</button>`:t.noff?'':`<button data-d="${i}">⬇</button>`}</div>`).join('')||'<p style="color:var(--mu);margin-top:12px">No songs yet.</p>'}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-p],[data-d],[data-x]');if(!b)return;const d=b.dataset;
  if(d.p!=null)go(+d.p,0);if(d.d!=null)saveOffline(+d.d);if(d.x!=null)del(+d.x)});
 $('#add').onclick=()=>$('#fi').click();$('#fi').onchange=e=>addFiles([...e.target.files]);
@@ -93,10 +93,13 @@ $('#eq').innerHTML=FQ.map((f,i)=>`<div><label>${f>=1e3?f/1e3+'k':f}</label><inpu
 async function jam(){const k=$('#jk').value.trim()||localStorage.jk;if(!k)return alert('Enter a free Jamendo client_id (devportal.jamendo.com)');localStorage.jk=k;
  try{const j=await (await fetch(`https://api.jamendo.com/v3.0/tracks/?client_id=${k}&format=json&limit=25&audioformat=mp32&audiodlformat=flac&search=${encodeURIComponent($('#jq').value)}`)).json();
   res=j.results.map(x=>({id:'j'+x.id,t:x.name+' – '+x.artist_name,u:x.audio,dl:x.audiodownload,k:'MP3'}));draw()}catch{alert('Search failed')}}
-$('#jg').onclick=jam;
+async function aud(){const q=$('#jq').value.trim();if(!q)return;
+ try{const j=await (await fetch(`https://api.audius.co/v1/tracks/search?query=${encodeURIComponent(q)}&limit=25&app_name=PulseMusic`)).json();
+  res=(j.data||[]).filter(x=>x.is_streamable!==false).map(x=>({id:'a'+x.id,t:x.title+' – '+x.user.name,u:`https://api.audius.co/v1/tracks/${x.id}/stream?app_name=PulseMusic`,k:'MP3',noff:1}));draw()}catch{alert('Audius search failed')}}
+const findSongs=()=>$('#jk').value.trim()?jam():aud();$('#jg').onclick=findSongs;
 $('#mic').onclick=()=>{const R=window.SpeechRecognition||window.webkitSpeechRecognition;if(!R)return alert('Voice not supported in this browser');const r=new R();
  r.onresult=e=>{const s=e.results[0][0].transcript.toLowerCase();
   if(/next/.test(s))$('#bn').onclick();else if(/pause|stop/.test(s))decks&&decks[cur].a.pause();else if(/resume/.test(s))decks[cur].a.play();else if(/shuffle/.test(s))$('#bs').onclick();
-  else{const q=s.replace(/^play /,''),i=Q.findIndex(t=>t.t.toLowerCase().includes(q));i>=0?go(i,0):($('#jq').value=q,jam())}};r.start()};
+  else{const q=s.replace(/^play /,''),i=Q.findIndex(t=>t.t.toLowerCase().includes(q));i>=0?go(i,0):($('#jq').value=q,findSongs())}};r.start()};
 $('#jk').value=localStorage.jk||'';draw();
 </script></body></html>
