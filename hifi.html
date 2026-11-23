@@ -23,16 +23,17 @@ main{padding:0 12px 190px}#ln{font-size:26px;font-weight:800;min-height:70px;mar
 <div class="row">Mode <select id="md"><option value="n">Normal</option><option value="k">Karaoke (Sing)</option><option value="s">Spatial 8D</option></select>
 Crossfade <select id="cf"><option value="0">Gapless</option><option value="4">4s</option><option value="8">8s</option></select>
 <label><input type="checkbox" id="sc" checked> Sound Check</label></div>
-<div class="row">EQ <select id="pr"></select></div><div class="eq" id="eq"></div></details>
-<div id="list"></div></main>
+<div class="row">Sleep <select id="st"><option value="0">Off</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option><option value="-1">End of track</option></select> <label><input type="checkbox" id="bg"> Background-safe mode</label> <button id="ap">AirPlay</button></div><div class="row">EQ <select id="pr"></select></div><div class="eq" id="eq"></div></details>
+<div class="row"><button id="v1">Songs</button><button id="v2">Replay</button></div><div id="list"></div></main>
 <div id="bar"><b id="tt">—</b><input type="range" id="sk" min="0" max="1000" value="0"><div class="ct"><button id="bs">🔀</button><button id="bp">⏮</button><button id="bt">▶</button><button id="bn">⏭</button></div></div>
 <script>
 const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const FQ=[32,64,125,250,500,1e3,2e3,4e3,8e3,16e3];
 const PRE={Flat:[0,0,0,0,0,0,0,0,0,0],Bass:[7,6,4,2,0,0,0,0,0,0],Vocal:[-2,-2,0,3,5,5,3,1,0,-1],Treble:[0,0,0,0,0,1,3,5,6,7],Rock:[5,4,2,-1,-2,0,3,4,5,5]};
-let AC,decks,paths={},eqs=[],Q=[],idx=-1,cur=0,sh=0,lrc=[],la=-1,pre=0,res=[],seeking=0,going=0;
+let AC,decks,paths={},eqs=[],Q=[],idx=-1,cur=0,sh=0,lrc=[],la=-1,pre=0,res=[],seeking=0,going=0,slT,sleepEnd=0,vw='lib';
 let meta=[];try{meta=JSON.parse(localStorage.hm||'[]')}catch{}
 const saveMeta=()=>localStorage.hm=JSON.stringify(meta);
+const BG=localStorage.bg==='1';let ST={};try{ST=JSON.parse(localStorage.hs||'{}')}catch{}
 const LIB=()=>caches.open('pulse-lib');
 /* ---------- Audio graph: decks -> mode (normal/karaoke/spatial) -> 10-band EQ -> out ---------- */
 function init(){if(AC)return;AC=new(window.AudioContext||webkitAudioContext)();
@@ -45,7 +46,8 @@ function init(){if(AC)return;AC=new(window.AudioContext||webkitAudioContext)();
  paths={n:dry,k:kar,s:spa};setMode('n');
  let last=mix;FQ.forEach(f=>{const b=AC.createBiquadFilter();b.type='peaking';b.frequency.value=f;b.Q.value=1.1;last.connect(b);last=b;eqs.push(b)});
  last.connect(AC.destination);
- decks=[0,1].map(()=>{const a=new Audio();a.preload='auto';const g=AC.createGain();AC.createMediaElementSource(a).connect(g);g.connect(bus);return{a,g,sc:1,t:null,p:null}});
+ decks=[0,1].map(()=>{const a=new Audio();a.preload='auto';const g=BG?{gain:{value:1,setValueAtTime(){},linearRampToValueAtTime(){},cancelScheduledValues(){}}}:AC.createGain();if(!BG){AC.createMediaElementSource(a).connect(g);g.connect(bus)}
+ a.onplay=()=>{if(navigator.mediaSession)navigator.mediaSession.playbackState='playing'};a.onpause=()=>{if(navigator.mediaSession)navigator.mediaSession.playbackState='paused'};return{a,g,sc:1,t:null,p:null}});
  setEQ(PRE.Flat)}
 const setMode=m=>{for(const k in paths)paths[k].gain.setTargetAtTime(k===m?1:0,AC.currentTime,.05)};
 const setEQ=v=>{v.forEach((g,i)=>{if(eqs[i])eqs[i].gain.value=g;const s=$('#e'+i);if(s)s.value=g})};
@@ -60,7 +62,7 @@ async function blobOf(t){return (await (await LIB()).match('/lib/'+t.id)).blob()
 async function gainOf(b){try{const x=(await AC.decodeAudioData(await b.arrayBuffer())).getChannelData(0);let s=0,n=0;for(let i=0;i<x.length;i+=50){s+=x[i]*x[i];n++}return Math.min(3,Math.max(.2,.1/Math.sqrt(s/n)))}catch{return 1}}
 function load(d,t){if(d.t===t)return d.p;d.t=t;return d.p=(async()=>{let u=t.u;d.sc=1;
  if(t.off){const b=await blobOf(t);u=URL.createObjectURL(b);if($('#sc').checked){t.g=t.g||await gainOf(b);d.sc=t.g}}
- d.a.crossOrigin=t.off?null:'anonymous';d.a.src=u})()}
+ d.a.crossOrigin=t.off||BG?null:'anonymous';d.a.src=u})()}
 /* ---------- Playback: gapless + crossfade with two decks ---------- */
 async function go(i,f){init();AC.resume();const t=Q[i];if(!t||going)return;going=1;const o=decks[cur],d=decks[1-cur];idx=i;
  await load(d,t);const T=AC.currentTime,fd=f||.05;d.a.currentTime=0;d.a.play().catch(()=>{});
@@ -69,20 +71,20 @@ async function go(i,f){init();AC.resume();const t=Q[i];if(!t||going)return;going
  setTimeout(()=>{if(o!==decks[cur])o.a.pause()},fd*1e3+80);cur=1-cur;pre=0;going=0;ui(t)}
 const nx=()=>sh&&Q.length>1?Math.floor(Math.random()*Q.length):idx+1<Q.length?idx+1:-1;
 setInterval(()=>{if(!decks)return;const d=decks[cur],dur=d.a.duration,c=d.a.currentTime;if(!dur||!isFinite(dur))return;
- if(!seeking)$('#sk').value=c/dur*1e3;const cf=+$('#cf').value,rem=dur-c;
+ if(!seeking)$('#sk').value=c/dur*1e3;const cf=BG?0:+$('#cf').value,rem=dur-c;
  if(!pre&&rem<20){const n=nx();if(n>=0){pre=n+1;load(decks[1-cur],Q[n])}}
- if(pre&&rem<=Math.max(cf,.3)&&!going){go(pre-1,cf);pre=0}
+ if(pre&&rem<=Math.max(cf,.3)&&!going){if(sleepEnd){sleepEnd=0;pre=0;return}go(pre-1,cf);pre=0}
  let n=-1;lrc.forEach((l,i)=>{if(l.s<=c)n=i});if(n!==la){la=n;$('#ln').textContent=lrc[n]?lrc[n].x:''}},250);
 $('#sk').oninput=()=>seeking=1;$('#sk').onchange=e=>{seeking=0;const d=decks[cur];d.a.currentTime=d.a.duration*e.target.value/1e3};
 $('#bt').onclick=()=>{if(!decks)return Q.length&&go(0,0);const a=decks[cur].a;a.paused?a.play():a.pause()};
 $('#bn').onclick=()=>go(Math.max(nx(),0),0);$('#bp').onclick=()=>go(Math.max(idx-1,0),0);$('#bs').onclick=()=>{sh^=1;$('#bs').style.color=sh?'var(--ac)':''};
 /* ---------- UI, lyrics, media session ---------- */
-async function ui(t){$('#tt').textContent=t.t;lrc=[];la=-1;$('#ln').textContent='';draw();
+async function ui(t){$('#tt').textContent=t.t;{const o=ST[t.id]||{n:0};ST[t.id]=Object.assign({},t,{n:o.n+1});try{localStorage.hs=JSON.stringify(ST)}catch{}}lrc=[];la=-1;$('#ln').textContent='';draw();
  if('mediaSession' in navigator){const m=navigator.mediaSession;m.metadata=new MediaMetadata({title:t.t});
   m.setActionHandler('play',()=>decks[cur].a.play());m.setActionHandler('pause',()=>decks[cur].a.pause());m.setActionHandler('nexttrack',$('#bn').onclick);m.setActionHandler('previoustrack',$('#bp').onclick)}
  try{const a=await (await fetch('https://lrclib.net/api/search?q='+encodeURIComponent(t.t))).json(),r=a.find(x=>x.syncedLyrics);
   if(r)lrc=r.syncedLyrics.split('\n').map(l=>{const m=l.match(/\[(\d+):(\d+\.?\d*)\](.*)/);return m&&{s:+m[1]*60+ +m[2],x:m[3].trim()}}).filter(Boolean)}catch{}}
-function draw(){Q=[...meta,...res];$('#list').innerHTML=Q.map((t,i)=>`<div class="r ${i===idx?'on':''}"><div class="m" data-p="${i}"><b>${esc(t.t)}</b><span>${t.k||''} ${t.off?'· offline':''}</span></div>${t.off?`<button data-x="${i}">🗑</button>`:t.noff?'':`<button data-d="${i}">⬇</button>`}</div>`).join('')||'<p style="color:var(--mu);margin-top:12px">No songs yet.</p>'}
+function draw(){Q=vw==='rp'?Object.values(ST).sort((a,b)=>b.n-a.n).slice(0,25):[...meta,...res];$('#list').innerHTML=Q.map((t,i)=>`<div class="r ${i===idx?'on':''}"><div class="m" data-p="${i}"><b>${esc(t.t)}</b><span>${t.k||''} ${t.off?'· offline':''} ${t.n?'· '+t.n+'×':''}</span></div>${t.off?`<button data-x="${i}">🗑</button>`:t.noff?'':`<button data-d="${i}">⬇</button>`}</div>`).join('')||'<p style="color:var(--mu);margin-top:12px">No songs yet.</p>'}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-p],[data-d],[data-x]');if(!b)return;const d=b.dataset;
  if(d.p!=null)go(+d.p,0);if(d.d!=null)saveOffline(+d.d);if(d.x!=null)del(+d.x)});
 $('#add').onclick=()=>$('#fi').click();$('#fi').onchange=e=>addFiles([...e.target.files]);
@@ -101,5 +103,10 @@ $('#mic').onclick=()=>{const R=window.SpeechRecognition||window.webkitSpeechReco
  r.onresult=e=>{const s=e.results[0][0].transcript.toLowerCase();
   if(/next/.test(s))$('#bn').onclick();else if(/pause|stop/.test(s))decks&&decks[cur].a.pause();else if(/resume/.test(s))decks[cur].a.play();else if(/shuffle/.test(s))$('#bs').onclick();
   else{const q=s.replace(/^play /,''),i=Q.findIndex(t=>t.t.toLowerCase().includes(q));i>=0?go(i,0):($('#jq').value=q,findSongs())}};r.start()};
+$('#v1').onclick=()=>{vw='lib';draw()};$('#v2').onclick=()=>{vw='rp';draw()};
+$('#st').onchange=e=>{clearTimeout(slT);const v=+e.target.value;sleepEnd=v===-1;if(v>0)slT=setTimeout(()=>{decks&&decks[cur].a.pause()},v*6e4)};
+$('#bg').checked=BG;$('#bg').onchange=e=>{localStorage.bg=e.target.checked?'1':'0';location.reload()};
+$('#ap').onclick=()=>{init();const a=decks[cur].a;a.webkitShowPlaybackTargetPicker?a.webkitShowPlaybackTargetPicker():alert('Control Center se AirPlay chuno')};
+document.addEventListener('visibilitychange',()=>{if(AC&&decks&&!decks[cur].a.paused&&AC.state!=='running')AC.resume()});
 $('#jk').value=localStorage.jk||'';draw();
 </script></body></html>
